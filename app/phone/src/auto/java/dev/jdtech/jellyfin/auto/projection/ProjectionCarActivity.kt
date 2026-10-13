@@ -29,6 +29,7 @@ import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import coil3.dispose
 import coil3.load
 import com.google.android.apps.auto.sdk.CarActivity
 import com.google.common.collect.ImmutableList
@@ -503,6 +504,10 @@ class ProjectionCarActivity : CarActivity() {
             holder.subtitle.text = metadata.subtitle
             holder.subtitle.isVisible = !metadata.subtitle.isNullOrEmpty()
             holder.poster.isVisible = true
+            // Coil restarts a view's last request whenever the view is attached again, which
+            // RecyclerView does when it reuses a tile. Cancel it, or tiles without an image of
+            // their own get the poster of whatever item used this view before.
+            holder.poster.dispose()
             holder.poster.setImageDrawable(null)
             val localArtwork = metadata.extras?.getString(AutoMediaTree.EXTRA_LOCAL_ARTWORK)
             when {
@@ -511,6 +516,11 @@ class ProjectionCarActivity : CarActivity() {
                 localArtwork != null -> holder.poster.load(File(localArtwork))
             }
             holder.root.setOnClickListener { onClick(item) }
+        }
+
+        override fun onViewRecycled(holder: Holder) {
+            holder.poster.dispose()
+            super.onViewRecycled(holder)
         }
 
         override fun getItemCount() = items.size
