@@ -50,6 +50,10 @@ I am developing this application in my spare time.
 - Media segments (requires Jellyfin 10.10 or higher)
   - Skip button
   - Auto skip
+- Android Auto (phone app)
+  - Browse continue watching, next up, libraries and favorites, search by voice or text
+  - Audio-only playback of movies and episodes (video is not available on Android Auto), progress is synced to the server
+  - Sign in on your phone first. To use it with a sideloaded build, enable *Unknown sources* in the Android Auto developer settings
 
 ## Planned features
 - Android TV

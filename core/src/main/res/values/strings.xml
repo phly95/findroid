@@ -33,6 +33,7 @@
     <string name="episode_number">Episode %1$d</string>
     <string name="next_up">Next Up</string>
     <string name="libraries">Libraries</string>
+    <string name="auto_setup_required">Open Findroid on your phone and sign in to a server</string>
     <string name="series_poster">Series poster</string>
     <string name="collection_no_media">This collection does not contain any media</string>
     <string name="no_favorites">You have no favorites</string>
