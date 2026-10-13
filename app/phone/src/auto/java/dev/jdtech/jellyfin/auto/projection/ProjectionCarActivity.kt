@@ -52,9 +52,7 @@ import timber.log.Timber
 class ProjectionCarActivity : CarActivity() {
     private class Level(val parentId: String, val title: String)
 
-    private val uiContext by lazy {
-        ContextThemeWrapper(this, android.R.style.Theme_Material_NoActionBar)
-    }
+    private val uiContext by lazy { ContextThemeWrapper(this, AppR.style.Theme_Findroid_Car) }
     private val callbackExecutor by lazy { ContextCompat.getMainExecutor(applicationContext) }
 
     private var browserFuture: ListenableFuture<MediaBrowser>? = null
@@ -73,6 +71,7 @@ class ProjectionCarActivity : CarActivity() {
         get() = resources.displayMetrics.density
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Timber.i("Creating ProjectionCarActivity")
         super.onCreate(savedInstanceState)
         setIgnoreConfigChanges(0xFFFFFFFF.toInt())
         carUiController.statusBarController.hideAppHeader()

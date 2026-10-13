@@ -4,6 +4,14 @@
 
     <application>
 
+        <!-- The same car meta-data Fermata declares, read by Android Auto's host. -->
+        <meta-data
+            android:name="com.google.android.gms.car.notification.SmallIcon"
+            android:resource="@drawable/ic_car_notification" />
+        <meta-data
+            android:name="com.google.android.gms.car.application.theme"
+            android:resource="@style/Theme.Findroid.Car" />
+
         <!--
             Fermata-style Android Auto projection: Android Auto binds this service and runs
             ProjectionCarActivity (a legacy SDK CarActivity) on the car display.

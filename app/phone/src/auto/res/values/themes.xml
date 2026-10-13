@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme of the projected car UI. Android Auto reads it from the manifest, like Fermata's AppTheme.Dark. -->
+    <style name="Theme.Findroid.Car" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#101114</item>
+        <item name="android:colorBackground">#101114</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+    </style>
+</resources>
