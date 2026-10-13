@@ -16,6 +16,7 @@
     <application
         android:name=".BaseApplication"
         android:allowBackup="true"
+        android:appCategory="game"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupOnly="true"
         android:icon="@mipmap/ic_launcher"
@@ -36,6 +37,38 @@
             android:screenOrientation="sensorLandscape"
             android:launchMode="singleTask"
             android:supportsPictureInPicture="true"
+            android:autoRemoveFromRecents="true"
+            android:theme="@style/Theme.Findroid.Player" />
+
+        <!--
+            The full app on the car display, for watching video while parked. Android Auto shows
+            CAR_LAUNCHER activities (only while parked) from sideloaded apps that are in the
+            "game" category (hence android:appCategory on <application>), once "Unknown sources"
+            is enabled in Android Auto's developer settings. The separate task affinity keeps
+            this task apart from the phone's.
+        -->
+        <activity
+            android:name=".CarMainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode|keyboard|keyboardHidden|navigation|density"
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:taskAffinity="${applicationId}.car"
+            android:windowSoftInputMode="adjustNothing">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.CAR_LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- The player for CarMainActivity, in the car task (see PlayerActivity above). -->
+        <activity
+            android:name=".CarPlayerActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode|keyboard|keyboardHidden|navigation|density"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:taskAffinity="${applicationId}.car"
             android:autoRemoveFromRecents="true"
             android:theme="@style/Theme.Findroid.Player" />
 

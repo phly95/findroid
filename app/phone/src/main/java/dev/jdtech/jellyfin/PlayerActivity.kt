@@ -51,7 +51,7 @@ import timber.log.Timber
 var isControlsLocked: Boolean = false
 
 @AndroidEntryPoint
-class PlayerActivity : BasePlayerActivity() {
+open class PlayerActivity : BasePlayerActivity() {
 
     @Inject lateinit var appPreferences: AppPreferences
 
@@ -64,7 +64,8 @@ class PlayerActivity : BasePlayerActivity() {
 
     private lateinit var skipSegmentButton: Button
 
-    private val isPipSupported by lazy {
+    /** Picture-in-picture, overridden by variants that never run on the phone display. */
+    protected open val isPipSupported: Boolean by lazy {
         // Check if device has PiP feature
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
             return@lazy false
