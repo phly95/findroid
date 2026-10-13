@@ -11,6 +11,10 @@ plugins {
 
 java { toolchain { languageVersion = Versions.JAVA } }
 
+// Legacy Android Auto SDK for the optional Fermata-style "auto" flavor, see libs/auto/README.md.
+// It is proprietary and not part of the repo; without it the flavor does not exist.
+val autoSdk = file("libs/auto/aauto.aar")
+
 android {
     namespace = "dev.jdtech.jellyfin"
     compileSdk = Versions.COMPILE_SDK
@@ -49,6 +53,15 @@ android {
             dimension = "variant"
             isDefault = true
         }
+        if (autoSdk.exists()) {
+            register("auto") {
+                dimension = "variant"
+                // Separate app, so it can be installed next to the regular one for comparison.
+                applicationIdSuffix = ".auto"
+                // The library modules only know the "libre" flavor.
+                matchingFallbacks += "libre"
+            }
+        }
     }
 
     splits {
@@ -81,6 +94,10 @@ android {
 }
 
 dependencies {
+    if (autoSdk.exists()) {
+        "autoImplementation"(files(autoSdk))
+    }
+
     implementation(projects.core)
     implementation(projects.data)
     implementation(projects.player.core)

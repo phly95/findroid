@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same declaration as Fermata's auto flavor: media browsing plus the legacy projection service. -->
+<automotiveApp xmlns:tools="http://schemas.android.com/tools">
+    <uses name="media" />
+    <uses
+        name="service"
+        tools:ignore="InvalidUsesTagAttribute" />
+    <uses
+        name="projection"
+        tools:ignore="InvalidUsesTagAttribute" />
+</automotiveApp>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+
+        <!--
+            Fermata-style Android Auto projection: Android Auto binds this service and runs
+            ProjectionCarActivity (a legacy SDK CarActivity) on the car display.
+        -->
+        <service
+            android:name=".auto.projection.ProjectionCarService"
+            android:exported="true"
+            android:label="@string/auto_projection_label"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="com.google.android.gms.car.category.CATEGORY_PROJECTION" />
+                <category android:name="com.google.android.gms.car.category.CATEGORY_PROJECTION_OEM" />
+            </intent-filter>
+        </service>
+
+        <!-- This flavor is the projection variant only, drop the CAR_LAUNCHER entry of the main build. -->
+        <activity
+            android:name=".CarMainActivity"
+            tools:node="remove" />
+
+    </application>
+
+</manifest>

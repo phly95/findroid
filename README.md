@@ -55,6 +55,7 @@ I am developing this application in my spare time.
   - Audio-only playback of movies and episodes (video is not available on Android Auto), progress is synced to the server
   - Sign in on your phone first. To use it with a sideloaded build, enable *Unknown sources* in the Android Auto developer settings
   - Video while parked: the full app is also offered as a car launcher app (tick Findroid under *Customize launcher* in Android Auto's settings). Android Auto only shows it while the car is parked. Requires a sideloaded build; this is an unofficial mechanism and may change
+  - Optional Fermata-style `auto` build flavor using the legacy Android Auto projection SDK, for comparison. It has its own small car UI and needs a proprietary SDK that is not in this repo, see `app/phone/libs/auto/README.md`
 
 ## Planned features
 - Android TV
