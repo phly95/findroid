@@ -17,10 +17,10 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
@@ -37,6 +37,7 @@ import dev.jdtech.jellyfin.R as AppR
 import dev.jdtech.jellyfin.auto.AutoMediaId
 import dev.jdtech.jellyfin.auto.AutoMediaLibraryService
 import dev.jdtech.jellyfin.core.R as CoreR
+import org.jellyfin.sdk.model.api.BaseItemKind
 import timber.log.Timber
 
 /**
@@ -44,9 +45,8 @@ import timber.log.Timber
  * display. It is not an `android.app.Activity` (no Compose, Hilt or ViewModels), so this is a small
  * View-based browser and video player.
  *
- * Like Fermata's UI it shares its playback engine with the media session: it connects to
- * [AutoMediaLibraryService] (the same browse tree and player Android Auto's media UI uses) and only
- * adds the video output.
+ * Browsing goes through [AutoMediaLibraryService] (the same tree Android Auto's media UI uses).
+ * Video is played by [ProjectionPlayer], the phone player's view model with the mpv backend.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 class ProjectionCarActivity : CarActivity() {
@@ -65,6 +65,24 @@ class ProjectionCarActivity : CarActivity() {
     private lateinit var browseLayout: View
     private lateinit var playerLayout: View
     private lateinit var playerView: PlayerView
+    private lateinit var choiceLayout: View
+    private lateinit var choiceTitle: TextView
+    private lateinit var choiceList: LinearLayout
+    private var projectionPlayer: ProjectionPlayer? = null
+
+    private val playerHost =
+        object : ProjectionPlayer.Host {
+            override fun getString(resId: Int) = this@ProjectionCarActivity.getString(resId)
+
+            override fun close() = closePlayer()
+
+            override fun showChoices(
+                title: String,
+                options: List<String>,
+                selected: Int,
+                onSelect: (Int) -> Unit,
+            ) = this@ProjectionCarActivity.showChoices(title, options, selected, onSelect)
+        }
     private val adapter = ItemAdapter { item -> onItemClicked(item) }
 
     private val density
@@ -81,7 +99,19 @@ class ProjectionCarActivity : CarActivity() {
         connect()
     }
 
+    override fun onPause() {
+        super.onPause()
+        projectionPlayer?.onHostPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        projectionPlayer?.onHostResume()
+    }
+
     override fun onDestroy() {
+        projectionPlayer?.release()
+        projectionPlayer = null
         browserFuture?.let { MediaBrowser.releaseFuture(it) }
         browserFuture = null
         browser = null
@@ -90,6 +120,7 @@ class ProjectionCarActivity : CarActivity() {
 
     override fun onBackPressed() {
         when {
+            choiceLayout.isVisible -> choiceLayout.isVisible = false
             playerLayout.isVisible -> closePlayer()
             levels.size > 1 -> {
                 levels.removeLast()
@@ -112,7 +143,6 @@ class ProjectionCarActivity : CarActivity() {
                 try {
                     val connected = future.get()
                     browser = connected
-                    playerView.player = connected
                     openRoot(connected)
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to connect to the media library")
@@ -186,32 +216,49 @@ class ProjectionCarActivity : CarActivity() {
     }
 
     private fun play(item: MediaItem) {
-        val browser = browser ?: return
-        // The media session plays audio only (for Android Auto's media UI), turn video on.
-        setVideoEnabled(browser, true)
-        browser.setMediaItem(item)
-        browser.prepare()
-        browser.play()
+        val (itemId, kind) =
+            when (val id = AutoMediaId.parse(item.mediaId)) {
+                is AutoMediaId.Movie -> id.id to BaseItemKind.MOVIE
+                is AutoMediaId.Episode -> id.id to BaseItemKind.EPISODE
+                else -> return
+            }
+        projectionPlayer?.release()
+        projectionPlayer =
+            ProjectionPlayer(applicationContext, playerView, playerHost).also {
+                it.start(itemId, kind.serialName)
+            }
         playerLayout.isVisible = true
         browseLayout.isVisible = false
     }
 
     private fun closePlayer() {
-        browser?.let {
-            it.stop()
-            it.clearMediaItems()
-            setVideoEnabled(it, false)
-        }
+        val player = projectionPlayer ?: return
+        projectionPlayer = null
+        choiceLayout.isVisible = false
         playerLayout.isVisible = false
         browseLayout.isVisible = true
+        player.release()
     }
 
-    private fun setVideoEnabled(browser: MediaBrowser, enabled: Boolean) {
-        browser.trackSelectionParameters =
-            browser.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !enabled)
-                .build()
+    private fun showChoices(
+        title: String,
+        options: List<String>,
+        selected: Int,
+        onSelect: (Int) -> Unit,
+    ) {
+        choiceTitle.text = title
+        choiceList.removeAllViews()
+        options.forEachIndexed { index, option ->
+            val label = if (index == selected) "\u2713  $option" else "      $option"
+            val row =
+                actionButton(label) {
+                        choiceLayout.isVisible = false
+                        onSelect(index)
+                    }
+                    .apply { gravity = Gravity.CENTER_VERTICAL or Gravity.START }
+            choiceList.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, dp(56)))
+        }
+        choiceLayout.isVisible = true
     }
 
     private fun showStatus(text: String) {
@@ -263,22 +310,55 @@ class ProjectionCarActivity : CarActivity() {
                 isVisible = false
             }
 
-        playerView = PlayerView(context).apply { setBackgroundColor(Color.BLACK) }
+        // The controls (back button, title, tracks, speed...) come from the phone app's layout.
+        playerView =
+            PlayerView(context).apply {
+                setBackgroundColor(Color.BLACK)
+                setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                setControllerAnimationEnabled(false)
+            }
         playerLayout =
             FrameLayout(context).apply {
                 isVisible = false
                 addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            }
+
+        choiceTitle =
+            TextView(context).apply {
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setPadding(dp(20), dp(16), dp(20), dp(8))
+            }
+        choiceList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val choiceCard =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(CARD)
+                isClickable = true
+                addView(choiceTitle, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
                 addView(
-                    actionButton(getString(AppR.string.auto_projection_close_player)) {
-                        closePlayer()
+                    ScrollView(context).apply { addView(choiceList) },
+                    LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f),
+                )
+            }
+        choiceLayout =
+            FrameLayout(context).apply {
+                isVisible = false
+                setBackgroundColor(SCRIM)
+                isClickable = true
+                setOnClickListener { isVisible = false }
+                addView(
+                    choiceCard,
+                    FrameLayout.LayoutParams(dp(480), MATCH_PARENT, Gravity.CENTER).apply {
+                        setMargins(0, dp(24), 0, dp(24))
                     },
-                    FrameLayout.LayoutParams(WRAP_CONTENT, dp(56), Gravity.TOP or Gravity.START),
                 )
             }
 
         root.addView(browseLayout, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         root.addView(statusView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         root.addView(playerLayout, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        root.addView(choiceLayout, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         return root
     }
 
@@ -396,5 +476,7 @@ class ProjectionCarActivity : CarActivity() {
         val BACKGROUND = Color.parseColor("#101114")
         val PLACEHOLDER = Color.parseColor("#26282E")
         val ACCENT = Color.parseColor("#8AB4F8")
+        val CARD = Color.parseColor("#1B1D22")
+        val SCRIM = Color.parseColor("#99000000")
     }
 }

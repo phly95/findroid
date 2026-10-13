@@ -132,7 +132,9 @@ constructor(
                 )
         )
 
-        val playerBackend = appPreferences.getValue(appPreferences.playerBackend)
+        val playerBackend =
+            savedStateHandle.get<String>(KEY_PLAYER_BACKEND_OVERRIDE)
+                ?: appPreferences.getValue(appPreferences.playerBackend)
         player =
             when (playerBackend) {
                 "exoplayer" -> {
@@ -673,6 +675,14 @@ constructor(
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
         eventsChannel.trySend(PlayerEvents.IsPlayingChanged(isPlaying))
+    }
+
+    companion object {
+        /**
+         * Optional [SavedStateHandle] entry ("exoplayer" or "mpv") that forces the player backend
+         * for this instance, regardless of the user's preference.
+         */
+        const val KEY_PLAYER_BACKEND_OVERRIDE = "playerBackendOverride"
     }
 }
 
