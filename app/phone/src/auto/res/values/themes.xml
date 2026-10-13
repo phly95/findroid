@@ -2,6 +2,8 @@
 <resources>
     <!-- Theme of the projected car UI. Android Auto reads it from the manifest, like Fermata's AppTheme.Dark. -->
     <style name="Theme.Findroid.Car" parent="Theme.AppCompat.NoActionBar">
+        <!-- The phone layout colours the seek bar with ?attr/colorPrimary. -->
+        <item name="colorPrimary">#8AB4F8</item>
         <item name="android:windowBackground">#101114</item>
         <item name="android:colorBackground">#101114</item>
         <item name="android:textColorPrimary">#FFFFFF</item>

@@ -2,6 +2,8 @@ package dev.jdtech.jellyfin.auto.projection
 
 import android.app.Application
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.view.SurfaceView
 import android.view.View
 import android.widget.ImageButton
@@ -128,6 +130,11 @@ class ProjectionPlayer(
         find<View>(AppR.id.btn_lockview).isVisible = false
         find<View>(AppR.id.btn_pip).isVisible = false
         find<View>(AppR.id.space_pip).isVisible = false
+
+        // The layout draws the play/pause icon black on a white circle with `app:tint`, which only
+        // AppCompat's layout inflater understands. Without it the icon is white on white.
+        find<ImageButton>(AppR.id.exo_play_pause).imageTintList =
+            ColorStateList.valueOf(Color.BLACK)
 
         find<ImageButton>(AppR.id.btn_audio_track).setOnClickListener {
             chooseTrack(C.TRACK_TYPE_AUDIO, PlayerR.string.select_audio_track)
