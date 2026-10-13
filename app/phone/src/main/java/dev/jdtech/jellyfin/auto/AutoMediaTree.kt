@@ -25,6 +25,8 @@ import dev.jdtech.jellyfin.models.FindroidSeason
 import dev.jdtech.jellyfin.models.FindroidShow
 import dev.jdtech.jellyfin.models.FindroidSourceType
 import dev.jdtech.jellyfin.repository.JellyfinRepository
+import dev.jdtech.jellyfin.settings.domain.AppPreferences
+import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -46,6 +48,11 @@ data class AutoQueue(val items: List<MediaItem>, val startIndex: Int, val startP
  * └── Favorites
  * ```
  *
+ * In offline mode the server is not available, so Libraries and Favorites are replaced by Downloads
+ * (movies, shows ─ seasons ─ episodes), which is what the offline repository can serve. Downloads
+ * is only offered there: online, a show's seasons and episodes come from the server and would
+ * include ones that were not downloaded.
+ *
  * Android Auto only shows audio-style UI while driving, so playable items are played audio-only.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -54,6 +61,7 @@ class AutoMediaTree
 constructor(
     @ApplicationContext private val context: Context,
     private val jellyfinApi: JellyfinApi,
+    private val appPreferences: AppPreferences,
     private val repositoryProvider: Provider<JellyfinRepository>,
 ) {
     private val streamUris = ConcurrentHashMap<UUID, Uri>()
@@ -61,6 +69,10 @@ constructor(
     /** Whether a server and user are configured, i.e. whether anything can be browsed. */
     val isSignedIn: Boolean
         get() = jellyfinApi.userId != null
+
+    /** Whether the app is in offline mode, which switches [repositoryProvider] to the database. */
+    val isOffline: Boolean
+        get() = appPreferences.getValue(appPreferences.offlineMode)
 
     fun clearCaches() = streamUris.clear()
 
@@ -78,8 +90,16 @@ constructor(
             AutoMediaId.ContinueWatching,
             AutoMediaId.NextUp,
             AutoMediaId.Libraries,
-            AutoMediaId.Favorites -> staticChildren().firstOrNull { it.mediaId == id.value }
-            else -> id.jellyfinItemId?.let { repositoryProvider.get().getItem(it)?.toMediaItem() }
+            AutoMediaId.Favorites,
+            AutoMediaId.Downloads -> staticFolders().firstOrNull { it.mediaId == id.value }
+            // The offline repository can only look things up by type, not with getItem.
+            is AutoMediaId.Movie -> repositoryProvider.get().getMovie(id.id).toMediaItem()
+            is AutoMediaId.Episode -> repositoryProvider.get().getEpisode(id.id).toMediaItem()
+            is AutoMediaId.Show -> repositoryProvider.get().getShow(id.id).toMediaItem()
+            is AutoMediaId.Season -> repositoryProvider.get().getSeason(id.id).toMediaItem()
+            is AutoMediaId.Library,
+            is AutoMediaId.Folder ->
+                id.jellyfinItemId?.let { repositoryProvider.get().getItem(it)?.toMediaItem() }
         }
 
     suspend fun getChildren(parent: AutoMediaId, page: Int, pageSize: Int): List<MediaItem> {
@@ -98,9 +118,23 @@ constructor(
             AutoMediaId.NextUp ->
                 repository.getNextUp().mapNotNull { it.toMediaItem() }.paged(page, pageSize)
             AutoMediaId.Libraries ->
-                repository.getLibraries().mapNotNull { it.toMediaItem() }.paged(page, pageSize)
+                if (isOffline) {
+                    emptyList()
+                } else {
+                    repository.getLibraries().mapNotNull { it.toMediaItem() }.paged(page, pageSize)
+                }
+            // The offline repository does not implement favorites.
             AutoMediaId.Favorites ->
-                repository.getFavoriteItems().mapNotNull { it.toMediaItem() }.paged(page, pageSize)
+                if (isOffline) {
+                    emptyList()
+                } else {
+                    repository
+                        .getFavoriteItems()
+                        .mapNotNull { it.toMediaItem() }
+                        .paged(page, pageSize)
+                }
+            AutoMediaId.Downloads ->
+                repository.getDownloads().mapNotNull { it.toMediaItem() }.paged(page, pageSize)
             is AutoMediaId.Library -> childrenOf(repository, parent.id, page, pageSize)
             is AutoMediaId.Folder -> childrenOf(repository, parent.id, page, pageSize)
             is AutoMediaId.Show ->
@@ -224,15 +258,33 @@ constructor(
         else C.TIME_UNSET
 
     private fun staticChildren(): List<MediaItem> =
-        listOf(
-            folder(
-                AutoMediaId.ContinueWatching,
-                context.getString(FilmR.string.continue_watching),
-            ),
-            folder(AutoMediaId.NextUp, context.getString(CoreR.string.next_up)),
-            folder(AutoMediaId.Libraries, context.getString(CoreR.string.libraries)),
-            folder(AutoMediaId.Favorites, context.getString(CoreR.string.title_favorite)),
-        )
+        if (isOffline) {
+            listOf(continueWatchingFolder(), nextUpFolder(), downloadsFolder())
+        } else {
+            listOf(
+                continueWatchingFolder(),
+                nextUpFolder(),
+                folder(AutoMediaId.Libraries, context.getString(CoreR.string.libraries)),
+                folder(AutoMediaId.Favorites, context.getString(CoreR.string.title_favorite)),
+            )
+        }
+
+    /** Every static folder of the tree, whatever the mode, for looking one up by id. */
+    private fun staticFolders(): List<MediaItem> =
+        staticChildren() +
+            listOf(
+                folder(AutoMediaId.Libraries, context.getString(CoreR.string.libraries)),
+                folder(AutoMediaId.Favorites, context.getString(CoreR.string.title_favorite)),
+                downloadsFolder(),
+            )
+
+    private fun continueWatchingFolder() =
+        folder(AutoMediaId.ContinueWatching, context.getString(FilmR.string.continue_watching))
+
+    private fun nextUpFolder() = folder(AutoMediaId.NextUp, context.getString(CoreR.string.next_up))
+
+    private fun downloadsFolder() =
+        folder(AutoMediaId.Downloads, context.getString(CoreR.string.title_download))
 
     private fun appName(): String =
         context.applicationInfo.loadLabel(context.packageManager).toString()
@@ -331,6 +383,7 @@ constructor(
                     .setIsBrowsable(true)
                     .setIsPlayable(false)
                     .setMediaType(mediaType)
+                    .setExtras(images?.localArtworkExtras())
                     .build()
             )
             .build()
@@ -362,7 +415,13 @@ constructor(
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setMediaType(mediaType)
-                    .setExtras(item.completionExtras())
+                    .setExtras(
+                        item.completionExtras().apply {
+                            item.images.localArtworkPath()?.let {
+                                putString(EXTRA_LOCAL_ARTWORK, it)
+                            }
+                        }
+                    )
                     .build()
             )
             .build()
@@ -399,6 +458,20 @@ constructor(
     private fun FindroidImages.artwork(): Uri? =
         (primary ?: showPrimary)?.takeIf { it.scheme == "http" || it.scheme == "https" }
 
+    /**
+     * Downloaded items have their images in the app's files directory (see ImagesDownloaderWorker).
+     * Android Auto cannot read those, so the path travels in the extras for the car UI of this app.
+     */
+    private fun FindroidImages.localArtworkPath(): String? {
+        val uri = primary ?: showPrimary ?: return null
+        if (uri.scheme != null) return null
+        val file = File(context.filesDir, uri.path.orEmpty())
+        return file.takeIf { it.isFile }?.absolutePath
+    }
+
+    private fun FindroidImages.localArtworkExtras(): Bundle? =
+        localArtworkPath()?.let { Bundle().apply { putString(EXTRA_LOCAL_ARTWORK, it) } }
+
     private fun <T> List<T>.paged(page: Int, pageSize: Int): List<T> {
         val from = (page.toLong() * pageSize).coerceIn(0L, size.toLong()).toInt()
         val to = (from.toLong() + pageSize).coerceAtMost(size.toLong()).toInt()
@@ -406,6 +479,9 @@ constructor(
     }
 
     companion object {
+        /** Media metadata extra holding the path of a downloaded image, for this app's own UI. */
+        const val EXTRA_LOCAL_ARTWORK = "dev.jdtech.jellyfin.auto.LOCAL_ARTWORK"
+
         private const val TICKS_PER_MS = 10_000L
         private const val MAX_PAGE_SIZE = 200
     }

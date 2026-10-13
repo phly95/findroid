@@ -331,6 +331,10 @@ class AutoMediaLibraryService : MediaLibraryService() {
         } catch (e: Exception) {
             Timber.e(e, "Failed to load media library")
             failure(SessionError.ERROR_IO)
+        } catch (e: NotImplementedError) {
+            // The offline repository still has TODO() stubs, which throw an Error.
+            Timber.e(e, "Not available in offline mode")
+            failure(SessionError.ERROR_NOT_SUPPORTED)
         }
     }
 

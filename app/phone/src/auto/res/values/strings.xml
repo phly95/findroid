@@ -4,4 +4,6 @@
     <string name="auto_projection_loading">Loading…</string>
     <string name="auto_projection_empty">Nothing here</string>
     <string name="auto_projection_back">Back</string>
+    <string name="auto_projection_offline_on">Offline mode: on</string>
+    <string name="auto_projection_offline_off">Offline mode: off</string>
 </resources>

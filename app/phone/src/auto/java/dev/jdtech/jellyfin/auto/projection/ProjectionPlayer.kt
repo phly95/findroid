@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.widget.ImageButton
@@ -94,8 +95,43 @@ class ProjectionPlayer(
         observeViewModel()
     }
 
+    private var released = false
+    private var surfaceCallback: SurfaceHolder.Callback? = null
+
+    /**
+     * Starts playback once the video surface exists. mpv attaches its video output when the surface
+     * is created, and a local file can finish loading before the (just shown) view has a surface,
+     * which leaves the picture black. Streams are slow enough to win that race by accident.
+     */
     fun start(itemId: UUID, itemKind: String) {
-        viewModel.initializePlayer(itemId, itemKind, startFromBeginning = false)
+        val holder = (playerView.videoSurfaceView as? SurfaceView)?.holder
+        if (holder == null || holder.surface.isValid) {
+            viewModel.initializePlayer(itemId, itemKind, startFromBeginning = false)
+            return
+        }
+
+        val callback =
+            object : SurfaceHolder.Callback {
+                // mpv's own callback is registered first, so it has attached the surface by now.
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    holder.removeCallback(this)
+                    surfaceCallback = null
+                    if (!released) {
+                        viewModel.initializePlayer(itemId, itemKind, startFromBeginning = false)
+                    }
+                }
+
+                override fun surfaceChanged(
+                    holder: SurfaceHolder,
+                    format: Int,
+                    width: Int,
+                    height: Int,
+                ) = Unit
+
+                override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
+            }
+        surfaceCallback = callback
+        holder.addCallback(callback)
     }
 
     /** The car UI went to the background: pause and save the position, like the phone player. */
@@ -110,6 +146,11 @@ class ProjectionPlayer(
     }
 
     fun release() {
+        released = true
+        surfaceCallback?.let {
+            (playerView.videoSurfaceView as? SurfaceView)?.holder?.removeCallback(it)
+        }
+        surfaceCallback = null
         scope.cancel()
         try {
             viewModel.player.clearVideoSurfaceView(playerView.videoSurfaceView as SurfaceView)

@@ -33,10 +33,13 @@ import coil3.load
 import com.google.android.apps.auto.sdk.CarActivity
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.ListenableFuture
+import dagger.hilt.android.EntryPointAccessors
 import dev.jdtech.jellyfin.R as AppR
 import dev.jdtech.jellyfin.auto.AutoMediaId
 import dev.jdtech.jellyfin.auto.AutoMediaLibraryService
+import dev.jdtech.jellyfin.auto.AutoMediaTree
 import dev.jdtech.jellyfin.core.R as CoreR
+import java.io.File
 import org.jellyfin.sdk.model.api.BaseItemKind
 import timber.log.Timber
 
@@ -60,6 +63,7 @@ class ProjectionCarActivity : CarActivity() {
     private val levels = ArrayDeque<Level>()
 
     private lateinit var backButton: TextView
+    private lateinit var offlineButton: TextView
     private lateinit var titleView: TextView
     private lateinit var statusView: TextView
     private lateinit var browseLayout: View
@@ -84,6 +88,11 @@ class ProjectionCarActivity : CarActivity() {
             ) = this@ProjectionCarActivity.showChoices(title, options, selected, onSelect)
         }
     private val adapter = ItemAdapter { item -> onItemClicked(item) }
+
+    private val appPreferences by lazy {
+        EntryPointAccessors.fromApplication(applicationContext, CarPlayerEntryPoint::class.java)
+            .appPreferences()
+    }
 
     private val density
         get() = resources.displayMetrics.density
@@ -172,6 +181,29 @@ class ProjectionCarActivity : CarActivity() {
             )
     }
 
+    /**
+     * Flips the app's offline mode (the same preference as the phone's settings). Offline mode
+     * makes the whole app use the downloads database instead of the server, so start again from the
+     * root, which now shows what is available in the new mode.
+     */
+    private fun toggleOfflineMode() {
+        appPreferences.setValue(
+            appPreferences.offlineMode,
+            !appPreferences.getValue(appPreferences.offlineMode),
+        )
+        updateOfflineButton()
+        browser?.let { openRoot(it) }
+    }
+
+    private fun updateOfflineButton() {
+        val offline = appPreferences.getValue(appPreferences.offlineMode)
+        offlineButton.text =
+            getString(
+                if (offline) AppR.string.auto_projection_offline_on
+                else AppR.string.auto_projection_offline_off
+            )
+    }
+
     private fun load(level: Level) {
         val browser = browser ?: return
         titleView.text = level.title
@@ -223,13 +255,31 @@ class ProjectionCarActivity : CarActivity() {
                 else -> return
             }
         projectionPlayer?.release()
+        projectionPlayer = null
+
+        // A new view for every playback, so mpv always gets a fresh surface, and show it before the
+        // player is created: the surface only exists once the view is on screen.
+        playerView = createPlayerView()
+        (playerLayout as FrameLayout).apply {
+            removeAllViews()
+            addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        }
+        playerLayout.isVisible = true
+        browseLayout.isVisible = false
+
         projectionPlayer =
             ProjectionPlayer(applicationContext, playerView, playerHost).also {
                 it.start(itemId, kind.serialName)
             }
-        playerLayout.isVisible = true
-        browseLayout.isVisible = false
     }
+
+    // The controls (back button, title, tracks, speed...) come from the phone app's layout.
+    private fun createPlayerView() =
+        PlayerView(uiContext).apply {
+            setBackgroundColor(Color.BLACK)
+            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+            setControllerAnimationEnabled(false)
+        }
 
     private fun closePlayer() {
         val player = projectionPlayer ?: return
@@ -282,12 +332,15 @@ class ProjectionCarActivity : CarActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), 0, dp(16), 0)
             }
+        offlineButton = actionButton("") { toggleOfflineMode() }
+        updateOfflineButton()
         val topBar =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(backButton, LinearLayout.LayoutParams(WRAP_CONTENT, dp(56)))
                 addView(titleView, LinearLayout.LayoutParams(0, dp(56), 1f))
+                addView(offlineButton, LinearLayout.LayoutParams(WRAP_CONTENT, dp(56)))
             }
         val list =
             RecyclerView(context).apply {
@@ -310,18 +363,8 @@ class ProjectionCarActivity : CarActivity() {
                 isVisible = false
             }
 
-        // The controls (back button, title, tracks, speed...) come from the phone app's layout.
-        playerView =
-            PlayerView(context).apply {
-                setBackgroundColor(Color.BLACK)
-                setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-                setControllerAnimationEnabled(false)
-            }
-        playerLayout =
-            FrameLayout(context).apply {
-                isVisible = false
-                addView(playerView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-            }
+        // Holds the player view of the current playback, see play().
+        playerLayout = FrameLayout(context).apply { isVisible = false }
 
         choiceTitle =
             TextView(context).apply {
@@ -461,7 +504,12 @@ class ProjectionCarActivity : CarActivity() {
             holder.subtitle.isVisible = !metadata.subtitle.isNullOrEmpty()
             holder.poster.isVisible = true
             holder.poster.setImageDrawable(null)
-            metadata.artworkUri?.let { holder.poster.load(it) }
+            val localArtwork = metadata.extras?.getString(AutoMediaTree.EXTRA_LOCAL_ARTWORK)
+            when {
+                metadata.artworkUri != null -> holder.poster.load(metadata.artworkUri)
+                // Downloaded items: the image is a file in the app's storage.
+                localArtwork != null -> holder.poster.load(File(localArtwork))
+            }
             holder.root.setOnClickListener { onClick(item) }
         }
 

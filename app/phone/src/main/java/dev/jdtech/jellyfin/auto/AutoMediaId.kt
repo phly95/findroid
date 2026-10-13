@@ -23,6 +23,8 @@ sealed class AutoMediaId(val value: String) {
 
     data object Favorites : AutoMediaId("favorites")
 
+    data object Downloads : AutoMediaId("downloads")
+
     data class Library(val id: UUID) : AutoMediaId("library:$id")
 
     data class Folder(val id: UUID) : AutoMediaId("folder:$id")
@@ -68,6 +70,7 @@ sealed class AutoMediaId(val value: String) {
                     NextUp.value -> NextUp
                     Libraries.value -> Libraries
                     Favorites.value -> Favorites
+                    Downloads.value -> Downloads
                     "library" -> Library(UUID.fromString(parts[1]))
                     "folder" -> Folder(UUID.fromString(parts[1]))
                     "show" -> Show(UUID.fromString(parts[1]))
